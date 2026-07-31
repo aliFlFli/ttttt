@@ -96,13 +96,26 @@ const ABOUT = `ℹ️ <b>درباره ربات</b>
 // ─── Bot entry point ─────────────────────────────────────────────────────────
 
 export async function startBot() {
+  console.log("🔵 startBot() called - Starting bot initialization...");
+  
   if (!API_ID || !API_HASH || !BOT_TOKEN) {
+    console.error("❌ Missing credentials!");
+    console.log(`API_ID: ${API_ID ? '✅' : '❌'}`);
+    console.log(`API_HASH: ${API_HASH ? '✅' : '❌'}`);
+    console.log(`BOT_TOKEN: ${BOT_TOKEN ? '✅' : '❌'}`);
     logger.warn("Missing Telegram credentials — bot not started");
     return;
   }
 
+  console.log("✅ All credentials present. Loading session...");
+
   let sessionStr = "";
-  try { sessionStr = fs.readFileSync(SESSION_FILE, "utf-8").trim(); } catch { /* no session */ }
+  try { 
+    sessionStr = fs.readFileSync(SESSION_FILE, "utf-8").trim(); 
+    console.log("📂 Session file loaded successfully");
+  } catch { 
+    console.log("📝 No existing session found, creating new one");
+  }
 
   const client = new TelegramClient(
     new StringSession(sessionStr),
@@ -111,21 +124,32 @@ export async function startBot() {
     { connectionRetries: 5 },
   );
 
+  console.log("🔄 Connecting to Telegram...");
   await client.start({ botAuthToken: BOT_TOKEN });
+  console.log("✅ Bot started successfully!");
 
   try {
     const saved = client.session.save();
     fs.writeFileSync(SESSION_FILE, saved, "utf-8");
-  } catch { /* non-fatal */ }
+    console.log("💾 Session saved to file");
+  } catch { 
+    console.log("⚠️ Could not save session (non-fatal)");
+  }
 
   logger.info("Telegram bot started (GramJS MTProto — no size limit)");
+  console.log("🤖 Bot is now listening for messages...");
 
   // ── Message handler ───────────────────────────────────────────────────────
 
   client.addEventHandler(async (event) => {
+    console.log("📩 New event received!");
     const msg = event.message;
-    if (!msg?.isPrivate) return;
+    if (!msg?.isPrivate) {
+      console.log("⏭️ Skipping non-private message");
+      return;
+    }
 
+    console.log(`📝 Message from ${msg.chatId}: "${msg.message?.substring(0, 50)}"`);
     const chatId = msg.chatId;
     const key = k(chatId);
     const text = msg.message ?? "";
@@ -133,14 +157,17 @@ export async function startBot() {
 
     // /start
     if (text.startsWith("/start")) {
+      console.log("🎬 /start command received");
       userState.set(key, { stage: "idle" });
       await client.sendMessage(chatId, { message: WELCOME, parseMode: "html", buttons: MAIN_KB });
+      console.log("✅ Welcome message sent");
       return;
     }
 
     // Admin commands
     if (isAdmin) {
       if (text === "/stats") {
+        console.log("📊 /stats command received");
         await client.sendMessage(chatId, {
           message:
             `📊 <b>آمار ربات</b>\n\n` +
@@ -151,6 +178,7 @@ export async function startBot() {
         return;
       }
       if (text === "/ping") {
+        console.log("🏓 /ping command received");
         await client.sendMessage(chatId, { message: "🟢 ربات آنلاین است." });
         return;
       }
@@ -164,12 +192,14 @@ export async function startBot() {
         : undefined);
 
     if (doc) {
+      console.log("📎 Document received!");
       const fnAttr = doc.attributes?.find(
         (a) =>
           a instanceof Api.DocumentAttributeFilename,
       );
       const originalName = fnAttr?.fileName ?? `file_${msg.id}`;
       const fileSize = Number(doc.size ?? 0);
+      console.log(`📄 Original name: ${originalName}, Size: ${fileSize} bytes`);
 
       const prompt = await client.sendMessage(chatId, {
         message:
@@ -187,28 +217,30 @@ export async function startBot() {
         fileName: originalName,
         fileSize,
       });
+      console.log("⏳ Waiting for new filename...");
       return;
     }
 
     // ── Text → new filename ──────────────────────────────────────────────────
     if (text && !text.startsWith("/")) {
+      console.log(`📝 Text received: "${text}"`);
       const state = userState.get(key);
 
       if (!state || state.stage !== "awaiting_name") {
+        console.log("⚠️ No pending file request");
         const tip = await client.sendMessage(chatId, {
           message: "⚠️ ابتدا یک فایل ارسال کنید.",
           buttons: [[Button.inline("📖 راهنما", Buffer.from("help"))]],
         });
-        // Auto-delete hint after 4 seconds
         setTimeout(() => del(client, chatId, [tip.id, msg.id]), 4000);
         return;
       }
 
+      console.log("✅ Processing filename change...");
       const { messageId, promptMsgId, fileName: originalName, fileSize } = state;
       const newFileName = text.trim();
       userState.set(key, { stage: "processing" });
 
-      // Delete: user's filename message + bot's prompt message
       await del(client, chatId, [msg.id, promptMsgId]);
 
       const statusMsg = await client.sendMessage(chatId, {
@@ -223,7 +255,7 @@ export async function startBot() {
         const [origMsg] = await client.getMessages(chatId, { ids: [messageId] });
         if (!origMsg?.media) throw new Error("Media not found");
 
-        // ── Download ─────────────────────────────────────────────────────
+        console.log("⬇️ Downloading file...");
         let lastDl = 0;
         await client.downloadMedia(origMsg.media, {
           outputFile: tmpPath,
@@ -241,17 +273,18 @@ export async function startBot() {
             }).catch(() => {});
           },
         });
+        console.log("✅ Download complete");
 
         fs.renameSync(tmpPath, renamedPath);
+        console.log("📝 File renamed");
 
-        // Show upload phase
         await client.editMessage(chatId, {
           message: statusMsg.id,
           text: buildUploadMsg(newFileName, 0, fileSize),
           parseMode: "html",
         }).catch(() => {});
 
-        // ── Upload ───────────────────────────────────────────────────────
+        console.log("⬆️ Uploading file...");
         let lastUp = 0;
         await client.sendFile(chatId, {
           file: renamedPath,
@@ -274,15 +307,13 @@ export async function startBot() {
             }).catch(() => {});
           },
         });
+        console.log("✅ Upload complete");
 
-        // Update stats
         stats.total++;
         stats.totalBytes += fileSize;
 
-        // Delete progress message
         await del(client, chatId, [statusMsg.id]);
 
-        // Success + next action button
         await client.sendMessage(chatId, {
           message:
             `✅ <b>کامل شد!</b>\n` +
@@ -292,7 +323,6 @@ export async function startBot() {
           buttons: DONE_KB,
         });
 
-        // Notify admin (if not self)
         if (chatId !== ADMIN_ID) {
           await client.sendMessage(ADMIN_ID, {
             message:
@@ -307,6 +337,7 @@ export async function startBot() {
         userState.set(key, { stage: "idle" });
 
       } catch (err) {
+        console.error("❌ Error processing file:", err);
         logger.error({ err }, "Error renaming file");
         userState.set(key, { stage: "idle" });
         await client.editMessage(chatId, {
@@ -314,10 +345,10 @@ export async function startBot() {
           text: "❌ خطا در پردازش فایل. دوباره امتحان کنید.",
         }).catch(() => {});
       } finally {
-        // Always clean up temp files
         for (const p of [tmpPath, renamedPath]) {
           fs.unlink(p, () => {});
         }
+        console.log("🧹 Temporary files cleaned up");
       }
     }
   }, new NewMessage({}));
@@ -329,6 +360,7 @@ export async function startBot() {
     const chatId = event.query.userId;
     const key = k(chatId);
 
+    console.log(`🔘 Callback received: ${data}`);
     await event.answer().catch(() => {});
 
     switch (data) {
@@ -360,8 +392,21 @@ export async function startBot() {
   }, new CallbackQuery({}));
 
   // Notify admin that bot is online
+  console.log("📢 Sending online notification to admin...");
   await client.sendMessage(ADMIN_ID, {
     message: "🟢 <b>ربات آنلاین شد.</b>\n\nدستورات ادمین:\n/stats — آمار\n/ping — وضعیت",
     parseMode: "html",
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error("⚠️ Could not notify admin:", err.message);
+  });
+  
+  console.log("🎯 Bot is fully ready and listening!");
 }
+
+// ─── Start the bot ──────────────────────────────────────────────────────────
+
+console.log("🚀 Starting bot application...");
+startBot().catch((err) => {
+  console.error("💥 Fatal error:", err);
+  process.exit(1);
+});
