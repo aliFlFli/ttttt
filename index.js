@@ -7,8 +7,6 @@ import path from "node:path";
 import os from "node:os";
 import { logger } from "./lib/logger.js";
 
-// ─── Config ─────────────────────────────────────────────────────────────────
-
 const API_ID    = parseInt(process.env["TELEGRAM_API_ID"]  ?? "0", 10);
 const API_HASH  = process.env["TELEGRAM_API_HASH"]  ?? "";
 const BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
@@ -18,14 +16,12 @@ const STATS_FILE = path.join(os.tmpdir(), "stats.json");
 const BANNED_FILE = path.join(os.tmpdir(), "banned.json");
 const CONFIG_FILE = path.join(os.tmpdir(), "bot_config.json");
 
-// ─── Config runtime ─────────────────────────────────────────────────────────
-
 let botConfig = loadConfig();
 function loadConfig() {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
   } catch {
-    return { maxFileSize: 2 * 1024 * 1024 * 1024 }; // 2GB default
+    return { maxFileSize: 2 * 1024 * 1024 * 1024 };
   }
 }
 function saveConfig() {
@@ -33,8 +29,6 @@ function saveConfig() {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(botConfig, null, 2));
   } catch {}
 }
-
-// ─── Stats ───────────────────────────────────────────────────────────────────
 
 let stats = loadStats();
 let bannedUsers = loadBanned();
@@ -90,135 +84,13 @@ function getUptime() {
   return days + " روز " + hours + " ساعت";
 }
 
-// ─── i18n (زبان) ─────────────────────────────────────────────────────────────
-
-const userLang = new Map(); // key -> "fa" | "en"
+const userLang = new Map();
 
 const T = {
   fa: {
-    welcome: "🎬 <b>ربات تغییر نام فایل</b>\nفایل ویدیویی خود را ارسال کنید.\n📦 پشتیبانی تا <b>۲ گیگابایت</b> — بدون محدودیت!\n\n💡 چند فایل بفرستید و بعد لیست نام‌ها را خط‌به‌خط ارسال کنید.",
-    help: "📖 <b>راهنما</b>\n\n۱. یک یا چند فایل Document بفرستید\n۲. نام جدید را تایپ کنید (برای چند فایل: هر نام در یک خط)\n۳. تأیید کنید و فایل را دریافت کنید ✅\n\n💡 اگر پسوند ننویسید، پسوند اصلی حفظ می‌شود.\n🌐 زبان: /lang fa یا /lang en",
-    about: function () {
-      return "ℹ️ <b>درباره ربات</b>\n⚡ پروتکل: MTProto\n📦 حداکثر: " + fmtSize(botConfig.maxFileSize) + "\n🔒 فایل‌ها بعد از ارسال حذف می‌شوند\n🟢 آپتایم: " + getUptime();
-    },
-    sendFileFirst: "⚠️ ابتدا یک فایل ارسال کنید.",
-    banned: "🚫 شما توسط ادمین مسدود شده‌اید.",
-    cancelled: "❌ لغو شد. فایل جدیدی ارسال کنید:",
-    processCancelled: "⛔ پردازش لغو شد.",
-    processCancelledHint: "❌ پردازش لغو شد. فایل جدیدی ارسال کنید.",
-    enterName: "✏️ نام جدید را ارسال کنید:",
-    enterNamesBatch: "✏️ نام‌های جدید را خط‌به‌خط ارسال کنید (" ,
-    preview: "📝 <b>پیش‌نمایش نام جدید</b>\n\n",
-    previewBatch: "📝 <b>پیش‌نمایش نام‌های جدید</b>\n\n",
-    currentName: "نام فعلی:\n",
-    newName: "نام جدید:\n",
-    downloading: "⬇️ <b>در حال دانلود...</b>",
-    uploading: "⬆️ <b>در حال آپلود...</b>",
-    downloadDone: "✅ دانلود کامل شد",
-    done: "✅ <b>کامل شد!</b>",
-    errorProcess: "❌ خطا در پردازش فایل. دوباره امتحان کنید.",
-    langSet: "✅ زبان روی فارسی تنظیم شد.",
-    langSetEn: "✅ Language set to English.",
-    tooBig: "⚠️ حجم فایل بیشتر از حد مجاز است.",
-    online: "🟢 ربات آنلاین است.",
-  },
-  en: {
-    welcome: "🎬 <b>File Rename Bot</b>\nSend your video file.\n📦 Up to <b>2 GB</b> — no Bot API limit!\n\n💡 Send multiple files, then send new names (one per line).",
-    help: "📖 <b>Help</b>\n\n1. Send one or more Document files\n2. Type the new name (for multiple: one name per line)\n3. Confirm and receive the file ✅\n\n💡 Extension is kept if you omit it.\n🌐 Language: /lang fa or /lang en",
-    about: function () {
-      return "ℹ️ <b>About</b>\n⚡ Protocol: MTProto\n📦 Max size: " + fmtSize(botConfig.maxFileSize) + "\n🔒 Files are deleted after sending\n🟢 Uptime: " + getUptime();
-    },
-    sendFileFirst: "⚠️ Please send a file first.",
-    banned: "🚫 You have been banned by the admin.",
-    cancelled: "❌ Cancelled. Send a new file:",
-    processCancelled: "⛔ Process cancelled.",
-    processCancelledHint: "❌ Process cancelled. Send a new file.",
-    enterName: "✏️ Send the new name:",
-    enterNamesBatch: "✏️ Send new names, one per line (",
-    preview: "📝 <b>Name preview</b>\n\n",
-    previewBatch: "📝 <b>Names preview</b>\n\n",
-    currentName: "Current:\n",
-    newName: "New:\n",
-    downloading: "⬇️ <b>Downloading...</b>",
-    uploading: "⬆️ <b>Uploading...</b>",
-    downloadDone: "✅ Download complete",
-    done: "✅ <b>Done!</b>",
-    errorProcess: "❌ Error processing file. Try again.",
-    langSet: "✅ Language set to فارسی.",
-    langSetEn: "✅ Language set to English.",
-    tooBig: "⚠️ File is larger than the allowed limit.",
-    online: "🟢 Bot is online.",
-  },
-};
+    welcome: "🎬 <b>ربات تغییر نام فایل</b>\nفایل ویدیویی خود را ارسال کنید.\n📦 پشتیبانی تا <b>۲ گیگابایت</b>خطا از اینه که موقع کپی، متن فارسیِ توضیح من داخل فایل JS رفته و سینتکس خراب شده.
 
-function t(key, lang) {
-  const L = T[lang] || T.fa;
-  const v = L[key];
-  return typeof v === "function" ? v() : v;
-}
-
-function getLang(key) {
-  return userLang.get(key) || "fa";
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function bar(pct) {
-  const filled = Math.min(10, Math.round(pct / 10));
-  return "█".repeat(filled) + "░".repeat(10 - filled);
-}
-function fmtSize(bytes) {
-  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + " GB";
-  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + " MB";
-  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + " KB";
-  return bytes + " B";
-}
-function fmtSpeed(bytesPerSec) {
-  if (bytesPerSec >= 1e9) return (bytesPerSec / 1e9).toFixed(1) + " GB/s";
-  if (bytesPerSec >= 1e6) return (bytesPerSec / 1e6).toFixed(1) + " MB/s";
-  if (bytesPerSec >= 1e3) return (bytesPerSec / 1e3).toFixed(1) + " KB/s";
-  return Math.round(bytesPerSec) + " B/s";
-}
-function getExtension(filename) {
-  const parts = filename.split(".");
-  return parts.length > 1 ? parts.pop() : "";
-}
-
-function buildDownloadMsg(fileName, pct, totalBytes, speed, eta, lang) {
-  const done = Math.floor((totalBytes * pct) / 100);
-  let msg = t("downloading", lang) + "\n\n";
-  msg += bar(pct) + "  <b>" + pct + "%</b>\n";
-  msg += "💾 " + fmtSize(done) + " / " + fmtSize(totalBytes) + "\n";
-  if (speed) msg += "⚡ " + fmtSpeed(speed) + "\n";
-  if (eta) msg += "⏱ " + eta + "\n";
-  msg += "📄 <code>" + fileName + "</code>";
-  return msg;
-}
-function buildUploadMsg(fileName, pct, totalBytes, speed, eta, lang) {
-  const done = Math.floor((totalBytes * pct) / 100);
-  let msg = t("downloadDone", lang) + "\n";
-  msg += t("uploading", lang) + "\n\n";
-  msg += bar(pct) + "  <b>" + pct + "%</b>\n";
-  msg += "💾 " + fmtSize(done) + " / " + fmtSize(totalBytes) + "\n";
-  if (speed) msg += "⚡ " + fmtSpeed(speed) + "\n";
-  if (eta) msg += "⏱ " + eta + "\n";
-  msg += "📄 <code>" + fileName + "</code>";
-  return msg;
-}
-
-async function del(client, chatId, ids, delay) {
-  if (!ids || !ids.length) return;
-  if (delay) {
-    setTimeout(function () {
-      client.deleteMessages(chatId, ids, { revoke: true }).catch(function () {});
-    }, delay);
-  } else {
-    await client.deleteMessages(chatId, ids, { revoke: true }).catch(function () {});
-  }
-}
-
-// auto-delete helper (feature 7)
-function autoDelete(client,ویژگی‌های انتخابی‌ات رو اضافه کردم. کد کامل و آماده جایگزینی:
+کل محتوای `index.js` رو پاک کن و **فقط** کد زیر رو بگذار (هیچ متن اضافه‌ای قبل یا بعدش نباشد):
 
 ```js
 import { TelegramClient, Api } from "telegram";
@@ -230,25 +102,21 @@ import path from "node:path";
 import os from "node:os";
 import { logger } from "./lib/logger.js";
 
-// ─── Config ─────────────────────────────────────────────────────────────────
-
 const API_ID    = parseInt(process.env["TELEGRAM_API_ID"]  ?? "0", 10);
 const API_HASH  = process.env["TELEGRAM_API_HASH"]  ?? "";
 const BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
 const ADMIN_ID  = 155824019n;
 const SESSION_FILE = path.join(os.tmpdir(), "tg_gramjs_session.txt");
 const STATS_FILE = path.join(os.tmpdir(), "stats.json");
-const BANNEDFILE = path.join(os.tmpdir(), "banned.json");
+const BANNED_FILE = path.join(os.tmpdir(), "banned.json");
 const CONFIG_FILE = path.join(os.tmpdir(), "bot_config.json");
-
-// ─── Config runtime ─────────────────────────────────────────────────────────
 
 let botConfig = loadConfig();
 function loadConfig() {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
   } catch {
-    return { maxFileSize: 2 * 1024 * 1024 * 1024 }; // 2GB default
+    return { maxFileSize: 2 * 1024 * 1024 * 1024 };
   }
 }
 function saveConfig() {
@@ -256,8 +124,6 @@ function saveConfig() {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(botConfig, null, 2));
   } catch {}
 }
-
-// ─── Stats ───────────────────────────────────────────────────────────────────
 
 let stats = loadStats();
 let bannedUsers = loadBanned();
@@ -313,9 +179,7 @@ function getUptime() {
   return days + " روز " + hours + " ساعت";
 }
 
-// ─── i18n (زبان) ─────────────────────────────────────────────────────────────
-
-const userLang = new Map(); // key -> "fa" | "en"
+const userLang = new Map();
 
 const T = {
   fa: {
@@ -330,7 +194,7 @@ const T = {
     processCancelled: "⛔ پردازش لغو شد.",
     processCancelledHint: "❌ پردازش لغو شد. فایل جدیدی ارسال کنید.",
     enterName: "✏️ نام جدید را ارسال کنید:",
-    enterNamesBatch: "✏️ نام‌های جدید را خط‌به‌خط ارسال کنید (" ,
+    enterNamesBatch: "✏️ نام‌های جدید را خط‌به‌خط ارسال کنید (",
     preview: "📝 <b>پیش‌نمایش نام جدید</b>\n\n",
     previewBatch: "📝 <b>پیش‌نمایش نام‌های جدید</b>\n\n",
     currentName: "نام فعلی:\n",
@@ -383,8 +247,6 @@ function t(key, lang) {
 function getLang(key) {
   return userLang.get(key) || "fa";
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function bar(pct) {
   const filled = Math.min(10, Math.round(pct / 10));
@@ -440,7 +302,6 @@ async function del(client, chatId, ids, delay) {
   }
 }
 
-// auto-delete helper (feature 7)
 function autoDelete(client, chatId, msgId, ms) {
   if (!msgId) return;
   setTimeout(function () {
@@ -466,11 +327,9 @@ function makeButton(text, data) {
   });
 }
 
-// ─── State ───────────────────────────────────────────────────────────────────
-
 const userState = new Map();
 const processingFiles = new Map();
-const abortFlags = new Map(); // key -> boolean (cancel واقعی‌تر)
+const abortFlags = new Map();
 
 function k(id) {
   return String(id);
@@ -492,8 +351,6 @@ function clearUserState(key) {
   userState.delete(key);
   abortFlags.delete(key);
 }
-
-// ─── Keyboards ───────────────────────────────────────────────────────────────
 
 function MAIN_KB(lang) {
   return [[
@@ -521,7 +378,335 @@ function CANCEL_PROCESS_KB(lang) {
   return [[makeButton(lang === "en" ? "⛔ Cancel process" : "⛔ لغو پردازش", "cancel_process")]];
 }
 
-// ─── Process one file ────────────────────────────────────────────────────────
+async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
+  const newFileName = item.newName;
+  const messageId = item.messageId;
+  const fileSize = item.fileSize;
+
+  const tmpPath = path.join(os.tmpdir(), "tg_dl_" + Date.now() + "_" + Math.random().toString(36).slice(2));
+  const renamedPath = path.join(os.tmpdir(), newFileName);
+
+  abortFlags.set(key, false);
+  processingFiles.set(key, {
+    statusMsgId: statusMsgId,
+    cancelled: false,
+    tmpPath: tmpPath,
+    renamedPath: renamedPath,
+  });
+
+  let lastProgressUpdate = 0;
+  let lastBytes = 0;
+  let lastTime = Date.now();
+
+  function isCancelled() {
+    return abortFlags.get(key) === true ||
+      (processingFiles.get(key) && processingFiles.get(key).cancelled);
+  }
+
+  try {
+    const messages = await client.getMessages(chatId, { ids: [messageId] });
+    const origMsg = messages[0];
+    if (!origMsg || !origMsg.media) throw new Error("Media not found");
+
+    await client.editMessage(chatId, {
+      message: statusMsgId,
+      text: buildDownloadMsg(newFileName, 0, fileSize, 0, "", lang),
+      parseMode: "html",
+      buttons: CANCEL_PROCESS_KB(lang),
+    }).catch(function () {});
+
+    await client.downloadMedia(origMsg.media, {
+      outputFile: tmpPath,
+      progressCallback: async function (downloaded, total) {
+        if (isCancelled()) throw new Error("Cancelled byخطا از اینه که موقع کپی، متن فارسیِ توضیح من داخل فایل JS رفته و سینتکس خراب شده.
+
+کل محتوای `index.js` رو پاک کن و **فقط** کد زیر رو بگذار (هیچ متن اضافه‌ای قبل یا بعدش نباشد):
+
+```js
+import { TelegramClient, Api } from "telegram";
+import { StringSession } from "telegram/sessions/index.js";
+import { NewMessage } from "telegram/events/index.js";
+import { CallbackQuery } from "telegram/events/CallbackQuery.js";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { logger } from "./lib/logger.js";
+
+const API_ID    = parseInt(process.env["TELEGRAM_API_ID"]  ?? "0", 10);
+const API_HASH  = process.env["TELEGRAM_API_HASH"]  ?? "";
+const BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
+const ADMIN_ID  = 155824019n;
+const SESSION_FILE = path.join(os.tmpdir(), "tg_gramjs_session.txt");
+const STATS_FILE = path.join(os.tmpdir(), "stats.json");
+const BANNED_FILE = path.join(os.tmpdir(), "banned.json");
+const CONFIG_FILE = path.join(os.tmpdir(), "bot_config.json");
+
+let botConfig = loadConfig();
+function loadConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+  } catch {
+    return { maxFileSize: 2 * 1024 * 1024 * 1024 };
+  }
+}
+function saveConfig() {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(botConfig, null, 2));
+  } catch {}
+}
+
+let stats = loadStats();
+let bannedUsers = loadBanned();
+const startTime = Date.now();
+
+function loadStats() {
+  try {
+    return JSON.parse(fs.readFileSync(STATS_FILE, "utf-8"));
+  } catch {
+    return { total: 0, totalBytes: 0, users: {}, today: 0, week: 0 };
+  }
+}
+function saveStats() {
+  try {
+    fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2));
+  } catch {}
+}
+function loadBanned() {
+  try {
+    return JSON.parse(fs.readFileSync(BANNED_FILE, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+function saveBanned() {
+  try {
+    fs.writeFileSync(BANNED_FILE, JSON.stringify(bannedUsers, null, 2));
+  } catch {}
+}
+
+function updateUserStats(userId) {
+  const today = new Date().toDateString();
+  const now = Date.now();
+  if (!stats.users[userId]) {
+    stats.users[userId] = { lastSeen: today, count: 0, firstSeen: now };
+  }
+  if (stats.users[userId].lastSeen !== today) {
+    stats.users[userId].lastSeen = today;
+    stats.today = (stats.today || 0) + 1;
+  }
+  stats.users[userId].count++;
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  stats.week = Object.values(stats.users).filter(function (u) {
+    return (u.firstSeen || now) > weekAgo || u.lastSeen === today;
+  }).length;
+  saveStats();
+}
+
+function getUptime() {
+  const diff = Date.now() - startTime;
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  return days + " روز " + hours + " ساعت";
+}
+
+const userLang = new Map();
+
+const T = {
+  fa: {
+    welcome: "🎬 <b>ربات تغییر نام فایل</b>\nفایل ویدیویی خود را ارسال کنید.\n📦 پشتیبانی تا <b>۲ گیگابایت</b> — بدون محدودیت!\n\n💡 چند فایل بفرستید و بعد لیست نام‌ها را خط‌به‌خط ارسال کنید.",
+    help: "📖 <b>راهنما</b>\n\n۱. یک یا چند فایل Document بفرستید\n۲. نام جدید را تایپ کنید (برای چند فایل: هر نام در یک خط)\n۳. تأیید کنید و فایل را دریافت کنید ✅\n\n💡 اگر پسوند ننویسید، پسوند اصلی حفظ می‌شود.\n🌐 زبان: /lang fa یا /lang en",
+    about: function () {
+      return "ℹ️ <b>درباره ربات</b>\n⚡ پروتکل: MTProto\n📦 حداکثر: " + fmtSize(botConfig.maxFileSize) + "\n🔒 فایل‌ها بعد از ارسال حذف می‌شوند\n🟢 آپتایم: " + getUptime();
+    },
+    sendFileFirst: "⚠️ ابتدا یک فایل ارسال کنید.",
+    banned: "🚫 شما توسط ادمین مسدود شده‌اید.",
+    cancelled: "❌ لغو شد. فایل جدیدی ارسال کنید:",
+    processCancelled: "⛔ پردازش لغو شد.",
+    processCancelledHint: "❌ پردازش لغو شد. فایل جدیدی ارسال کنید.",
+    enterName: "✏️ نام جدید را ارسال کنید:",
+    enterNamesBatch: "✏️ نام‌های جدید را خط‌به‌خط ارسال کنید (",
+    preview: "📝 <b>پیش‌نمایش نام جدید</b>\n\n",
+    previewBatch: "📝 <b>پیش‌نمایش نام‌های جدید</b>\n\n",
+    currentName: "نام فعلی:\n",
+    newName: "نام جدید:\n",
+    downloading: "⬇️ <b>در حال دانلود...</b>",
+    uploading: "⬆️ <b>در حال آپلود...</b>",
+    downloadDone: "✅ دانلود کامل شد",
+    done: "✅ <b>کامل شد!</b>",
+    errorProcess: "❌ خطا در پردازش فایل. دوباره امتحان کنید.",
+    langSet: "✅ زبان روی فارسی تنظیم شد.",
+    langSetEn: "✅ Language set to English.",
+    tooBig: "⚠️ حجم فایل بیشتر از حد مجاز است.",
+    online: "🟢 ربات آنلاین است.",
+  },
+  en: {
+    welcome: "🎬 <b>File Rename Bot</b>\nSend your video file.\n📦 Up to <b>2 GB</b> — no Bot API limit!\n\n💡 Send multiple files, then send new names (one per line).",
+    help: "📖 <b>Help</b>\n\n1. Send one or more Document files\n2. Type the new name (for multiple: one name per line)\n3. Confirm and receive the file ✅\n\n💡 Extension is kept if you omit it.\n🌐 Language: /lang fa or /lang en",
+    about: function () {
+      return "ℹ️ <b>About</b>\n⚡ Protocol: MTProto\n📦 Max size: " + fmtSize(botConfig.maxFileSize) + "\n🔒 Files are deleted after sending\n🟢 Uptime: " + getUptime();
+    },
+    sendFileFirst: "⚠️ Please send a file first.",
+    banned: "🚫 You have been banned by the admin.",
+    cancelled: "❌ Cancelled. Send a new file:",
+    processCancelled: "⛔ Process cancelled.",
+    processCancelledHint: "❌ Process cancelled. Send a new file.",
+    enterName: "✏️ Send the new name:",
+    enterNamesBatch: "✏️ Send new names, one per line (",
+    preview: "📝 <b>Name preview</b>\n\n",
+    previewBatch: "📝 <b>Names preview</b>\n\n",
+    currentName: "Current:\n",
+    newName: "New:\n",
+    downloading: "⬇️ <b>Downloading...</b>",
+    uploading: "⬆️ <b>Uploading...</b>",
+    downloadDone: "✅ Download complete",
+    done: "✅ <b>Done!</b>",
+    errorProcess: "❌ Error processing file. Try again.",
+    langSet: "✅ Language set to فارسی.",
+    langSetEn: "✅ Language set to English.",
+    tooBig: "⚠️ File is larger than the allowed limit.",
+    online: "🟢 Bot is online.",
+  },
+};
+
+function t(key, lang) {
+  const L = T[lang] || T.fa;
+  const v = L[key];
+  return typeof v === "function" ? v() : v;
+}
+
+function getLang(key) {
+  return userLang.get(key) || "fa";
+}
+
+function bar(pct) {
+  const filled = Math.min(10, Math.round(pct / 10));
+  return "█".repeat(filled) + "░".repeat(10 - filled);
+}
+function fmtSize(bytes) {
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + " GB";
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + " MB";
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + " KB";
+  return bytes + " B";
+}
+function fmtSpeed(bytesPerSec) {
+  if (bytesPerSec >= 1e9) return (bytesPerSec / 1e9).toFixed(1) + " GB/s";
+  if (bytesPerSec >= 1e6) return (bytesPerSec / 1e6).toFixed(1) + " MB/s";
+  if (bytesPerSec >= 1e3) return (bytesPerSec / 1e3).toFixed(1) + " KB/s";
+  return Math.round(bytesPerSec) + " B/s";
+}
+function getExtension(filename) {
+  const parts = filename.split(".");
+  return parts.length > 1 ? parts.pop() : "";
+}
+
+function buildDownloadMsg(fileName, pct, totalBytes, speed, eta, lang) {
+  const done = Math.floor((totalBytes * pct) / 100);
+  let msg = t("downloading", lang) + "\n\n";
+  msg += bar(pct) + "  <b>" + pct + "%</b>\n";
+  msg += "💾 " + fmtSize(done) + " / " + fmtSize(totalBytes) + "\n";
+  if (speed) msg += "⚡ " + fmtSpeed(speed) + "\n";
+  if (eta) msg += "⏱ " + eta + "\n";
+  msg += "📄 <code>" + fileName + "</code>";
+  return msg;
+}
+function buildUploadMsg(fileName, pct, totalBytes, speed, eta, lang) {
+  const done = Math.floor((totalBytes * pct) / 100);
+  let msg = t("downloadDone", lang) + "\n";
+  msg += t("uploading", lang) + "\n\n";
+  msg += bar(pct) + "  <b>" + pct + "%</b>\n";
+  msg += "💾 " + fmtSize(done) + " / " + fmtSize(totalBytes) + "\n";
+  if (speed) msg += "⚡ " + fmtSpeed(speed) + "\n";
+  if (eta) msg += "⏱ " + eta + "\n";
+  msg += "📄 <code>" + fileName + "</code>";
+  return msg;
+}
+
+async function del(client, chatId, ids, delay) {
+  if (!ids || !ids.length) return;
+  if (delay) {
+    setTimeout(function () {
+      client.deleteMessages(chatId, ids, { revoke: true }).catch(function () {});
+    }, delay);
+  } else {
+    await client.deleteMessages(chatId, ids, { revoke: true }).catch(function () {});
+  }
+}
+
+function autoDelete(client, chatId, msgId, ms) {
+  if (!msgId) return;
+  setTimeout(function () {
+    client.deleteMessages(chatId, [msgId], { revoke: true }).catch(function () {});
+  }, ms || 5 * 60 * 1000);
+}
+
+async function notifyAdminError(client, err, context) {
+  try {
+    const text =
+      "⚠️ <b>خطای ربات</b>\n" +
+      "📍 " + (context || "-") + "\n" +
+      "<code>" + String(err && err.message ? err.message : err).slice(0, 800) + "</code>";
+    await client.sendMessage(ADMIN_ID, { message: text, parseMode: "html" });
+  } catch {}
+  logger.error({ err: err, context: context }, "Bot error");
+}
+
+function makeButton(text, data) {
+  return new Api.KeyboardButtonCallback({
+    text: text,
+    data: Buffer.from(String(data)),
+  });
+}
+
+const userState = new Map();
+const processingFiles = new Map();
+const abortFlags = new Map();
+
+function k(id) {
+  return String(id);
+}
+
+const STATE_TIMEOUT_MS = 15 * 60 * 1000;
+
+function setUserState(key, data) {
+  const prev = userState.get(key);
+  if (prev && prev.timeoutId) clearTimeout(prev.timeoutId);
+  const timeoutId = setTimeout(function () {
+    userState.delete(key);
+  }, STATE_TIMEOUT_MS);
+  userState.set(key, Object.assign({}, data, { timeoutId: timeoutId }));
+}
+function clearUserState(key) {
+  const state = userState.get(key);
+  if (state && state.timeoutId) clearTimeout(state.timeoutId);
+  userState.delete(key);
+  abortFlags.delete(key);
+}
+
+function MAIN_KB(lang) {
+  return [[
+    makeButton(lang === "en" ? "📖 Help" : "📖 راهنما", "help"),
+    makeButton(lang === "en" ? "ℹ️ About" : "ℹ️ درباره", "about"),
+  ]];
+}
+function CANCEL_KB(lang) {
+  return [[makeButton(lang === "en" ? "❌ Cancel" : "❌ لغو", "cancel")]];
+}
+function DONE_KB(lang) {
+  return [[makeButton(lang === "en" ? "🔄 Another file" : "🔄 فایل دیگه", "another")]];
+}
+function BACK_KB(lang) {
+  return [[makeButton(lang === "en" ? "🔙 Back" : "🔙 بازگشت", "back_start")]];
+}
+function CONFIRM_KB(token, lang) {
+  return [[
+    makeButton(lang === "en" ? "✅ Confirm" : "✅ تایید", "confirm_" + token),
+    makeButton(lang === "en" ? "✏️ Edit" : "✏️ ویرایش", "edit"),
+    makeButton(lang === "en" ? "❌ Cancel" : "❌ لغو", "cancel"),
+  ]];
+}
+function CANCEL_PROCESS_KB(lang) {
+  return [[makeButton(lang === "en" ? "⛔ Cancel process" : "⛔ لغو پردازش", "cancel_process")]];
+}
 
 async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
   const newFileName = item.newName;
@@ -671,10 +856,6 @@ async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
   }
 }
 
-// ─── Bot ─────────────────────────────────────────────────────────────────────
-
-let clientRef = null;
-
 export async function startBot() {
   console.log("🔵 startBot() called");
 
@@ -695,9 +876,7 @@ export async function startBot() {
     API_HASH,
     { connectionRetries: 10, retryDelay: 2000 }
   );
-  clientRef = client;
 
-  // Feature 13: reconnection watchdog
   let reconnecting = false;
   async function ensureConnected() {
     if (reconnecting) return;
@@ -727,8 +906,6 @@ export async function startBot() {
 
   logger.info("Telegram bot started");
 
-  // ── Message handler ───────────────────────────────────────────────────────
-
   client.addEventHandler(async function (event) {
     const msg = event.message;
     if (!msg || !msg.isPrivate) return;
@@ -746,7 +923,6 @@ export async function startBot() {
 
     updateUserStats(Number(chatId));
 
-    // /lang
     if (text.startsWith("/lang")) {
       const parts = text.trim().split(/\s+/);
       const code = (parts[1] || "").toLowerCase();
@@ -760,7 +936,6 @@ export async function startBot() {
       return;
     }
 
-    // Admin commands (feature 9)
     if (isAdmin) {
       if (text.startsWith("/ban ")) {
         const userId = parseInt(text.split(" ")[1]);
@@ -853,13 +1028,12 @@ export async function startBot() {
       }
       if (text === "/cleanup") {
         let cleaned = 0;
-        userState.forEach(function (_, key) {
-          clearUserState(key);
+        userState.forEach(function (_, ukey) {
+          clearUserState(ukey);
           cleaned++;
         });
         processingFiles.clear();
         abortFlags.clear();
-        // temp files
         try {
           const files = fs.readdirSync(os.tmpdir());
           files.forEach(function (f) {
@@ -873,7 +1047,6 @@ export async function startBot() {
       }
     }
 
-    // /start
     if (text.startsWith("/start")) {
       setUserState(key, { stage: "idle", pendingFiles: [] });
       await client.sendMessage(chatId, {
@@ -884,7 +1057,6 @@ export async function startBot() {
       return;
     }
 
-    // Document — collect for single or batch (feature 6)
     let doc = msg.document;
     if (!doc && msg.media instanceof Api.MessageMediaDocument) {
       doc = msg.media.document;
@@ -906,7 +1078,6 @@ export async function startBot() {
       let state = userState.get(key) || { stage: "idle", pendingFiles: [] };
       if (!state.pendingFiles) state.pendingFiles = [];
 
-      // پاک کردن پیام‌های قبلی prompt/confirm
       if (state.promptMsgId) await del(client, chatId, [state.promptMsgId]);
       if (state.confirmMsgId) await del(client, chatId, [state.confirmMsgId]);
 
@@ -938,7 +1109,6 @@ export async function startBot() {
       return;
     }
 
-    // Text = new name(s)
     if (text && !text.startsWith("/")) {
       const state = userState.get(key);
       if (!state || state.stage !== "awaiting_name" || !state.pendingFiles || !state.pendingFiles.length) {
@@ -954,7 +1124,6 @@ export async function startBot() {
       const lines = text.split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
       const files = state.pendingFiles;
 
-      // تعداد نام‌ها باید با تعداد فایل‌ها یکی باشد (یا فقط یکی برای تک‌فایل)
       if (lines.length !== files.length) {
         const tip = await client.sendMessage(chatId, {
           message:
@@ -988,7 +1157,6 @@ export async function startBot() {
         previewText += t("newName", lang) + "<code>" + it.newName + "</code>\n\n";
       });
 
-      // token کوتاه برای callback (نام کامل ممکنه طولانی باشه)
       const token = "b" + Date.now().toString(36);
       const confirmMsg = await client.sendMessage(chatId, {
         message: previewText,
@@ -1005,8 +1173,6 @@ export async function startBot() {
       return;
     }
   }, new NewMessage({}));
-
-  // ── Callback handler ──────────────────────────────────────────────────────
 
   client.addEventHandler(async function (event) {
     const data = (event.data && event.data.toString()) || "";
@@ -1050,7 +1216,6 @@ export async function startBot() {
     if (data === "edit") {
       if (state && state.stage === "confirming" && state.items) {
         await del(client, chatId, [state.confirmMsgId]);
-        // برگرداندن به حالت جمع‌آوری نام با همان فایل‌ها
         const pendingFiles = state.items.map(function (it) {
           return {
             messageId: it.messageId,
@@ -1075,7 +1240,6 @@ export async function startBot() {
       return;
     }
 
-    // Feature 12: cancel واقعی‌تر
     if (data === "cancel_process") {
       abortFlags.set(key, true);
       const processData = processingFiles.get(key);
@@ -1085,7 +1249,6 @@ export async function startBot() {
           message: processData.statusMsgId,
           text: t("processCancelled", lang),
         }).catch(function () {});
-        // پاک کردن فایل موقت
         try { if (processData.tmpPath && fs.existsSync(processData.tmpPath)) fs.unlinkSync(processData.tmpPath); } catch {}
         try { if (processData.renamedPath && fs.existsSync(processData.renamedPath)) fs.unlinkSync(processData.renamedPath); } catch {}
       }
@@ -1190,8 +1353,6 @@ export async function startBot() {
 
   console.log("🎯 Bot is fully ready!");
 }
-
-// ─── Start ───────────────────────────────────────────────────────────────────
 
 console.log("🚀 Starting bot...");
 startBot()
