@@ -88,101 +88,6 @@ const userLang = new Map();
 
 const T = {
   fa: {
-    welcome: "🎬 <b>ربات تغییر نام فایل</b>\nفایل ویدیویی خود را ارسال کنید.\n📦 پشتیبانی تا <b>۲ گیگابایت</b>خطا از اینه که موقع کپی، متن فارسیِ توضیح من داخل فایل JS رفته و سینتکس خراب شده.
-
-کل محتوای `index.js` رو پاک کن و **فقط** کد زیر رو بگذار (هیچ متن اضافه‌ای قبل یا بعدش نباشد):
-
-```js
-import { TelegramClient, Api } from "telegram";
-import { StringSession } from "telegram/sessions/index.js";
-import { NewMessage } from "telegram/events/index.js";
-import { CallbackQuery } from "telegram/events/CallbackQuery.js";
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
-import { logger } from "./lib/logger.js";
-
-const API_ID    = parseInt(process.env["TELEGRAM_API_ID"]  ?? "0", 10);
-const API_HASH  = process.env["TELEGRAM_API_HASH"]  ?? "";
-const BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
-const ADMIN_ID  = 155824019n;
-const SESSION_FILE = path.join(os.tmpdir(), "tg_gramjs_session.txt");
-const STATS_FILE = path.join(os.tmpdir(), "stats.json");
-const BANNED_FILE = path.join(os.tmpdir(), "banned.json");
-const CONFIG_FILE = path.join(os.tmpdir(), "bot_config.json");
-
-let botConfig = loadConfig();
-function loadConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-  } catch {
-    return { maxFileSize: 2 * 1024 * 1024 * 1024 };
-  }
-}
-function saveConfig() {
-  try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(botConfig, null, 2));
-  } catch {}
-}
-
-let stats = loadStats();
-let bannedUsers = loadBanned();
-const startTime = Date.now();
-
-function loadStats() {
-  try {
-    return JSON.parse(fs.readFileSync(STATS_FILE, "utf-8"));
-  } catch {
-    return { total: 0, totalBytes: 0, users: {}, today: 0, week: 0 };
-  }
-}
-function saveStats() {
-  try {
-    fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2));
-  } catch {}
-}
-function loadBanned() {
-  try {
-    return JSON.parse(fs.readFileSync(BANNED_FILE, "utf-8"));
-  } catch {
-    return [];
-  }
-}
-function saveBanned() {
-  try {
-    fs.writeFileSync(BANNED_FILE, JSON.stringify(bannedUsers, null, 2));
-  } catch {}
-}
-
-function updateUserStats(userId) {
-  const today = new Date().toDateString();
-  const now = Date.now();
-  if (!stats.users[userId]) {
-    stats.users[userId] = { lastSeen: today, count: 0, firstSeen: now };
-  }
-  if (stats.users[userId].lastSeen !== today) {
-    stats.users[userId].lastSeen = today;
-    stats.today = (stats.today || 0) + 1;
-  }
-  stats.users[userId].count++;
-  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-  stats.week = Object.values(stats.users).filter(function (u) {
-    return (u.firstSeen || now) > weekAgo || u.lastSeen === today;
-  }).length;
-  saveStats();
-}
-
-function getUptime() {
-  const diff = Date.now() - startTime;
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  return days + " روز " + hours + " ساعت";
-}
-
-const userLang = new Map();
-
-const T = {
-  fa: {
     welcome: "🎬 <b>ربات تغییر نام فایل</b>\nفایل ویدیویی خود را ارسال کنید.\n📦 پشتیبانی تا <b>۲ گیگابایت</b> — بدون محدودیت!\n\n💡 چند فایل بفرستید و بعد لیست نام‌ها را خط‌به‌خط ارسال کنید.",
     help: "📖 <b>راهنما</b>\n\n۱. یک یا چند فایل Document بفرستید\n۲. نام جدید را تایپ کنید (برای چند فایل: هر نام در یک خط)\n۳. تأیید کنید و فایل را دریافت کنید ✅\n\n💡 اگر پسوند ننویسید، پسوند اصلی حفظ می‌شود.\n🌐 زبان: /lang fa یا /lang en",
     about: function () {
@@ -312,337 +217,7 @@ function autoDelete(client, chatId, msgId, ms) {
 async function notifyAdminError(client, err, context) {
   try {
     const text =
-      "⚠️ <b>خطای ربات</b>\n" +
-      "📍 " + (context || "-") + "\n" +
-      "<code>" + String(err && err.message ? err.message : err).slice(0, 800) + "</code>";
-    await client.sendMessage(ADMIN_ID, { message: text, parseMode: "html" });
-  } catch {}
-  logger.error({ err: err, context: context }, "Bot error");
-}
-
-function makeButton(text, data) {
-  return new Api.KeyboardButtonCallback({
-    text: text,
-    data: Buffer.from(String(data)),
-  });
-}
-
-const userState = new Map();
-const processingFiles = new Map();
-const abortFlags = new Map();
-
-function k(id) {
-  return String(id);
-}
-
-const STATE_TIMEOUT_MS = 15 * 60 * 1000;
-
-function setUserState(key, data) {
-  const prev = userState.get(key);
-  if (prev && prev.timeoutId) clearTimeout(prev.timeoutId);
-  const timeoutId = setTimeout(function () {
-    userState.delete(key);
-  }, STATE_TIMEOUT_MS);
-  userState.set(key, Object.assign({}, data, { timeoutId: timeoutId }));
-}
-function clearUserState(key) {
-  const state = userState.get(key);
-  if (state && state.timeoutId) clearTimeout(state.timeoutId);
-  userState.delete(key);
-  abortFlags.delete(key);
-}
-
-function MAIN_KB(lang) {
-  return [[
-    makeButton(lang === "en" ? "📖 Help" : "📖 راهنما", "help"),
-    makeButton(lang === "en" ? "ℹ️ About" : "ℹ️ درباره", "about"),
-  ]];
-}
-function CANCEL_KB(lang) {
-  return [[makeButton(lang === "en" ? "❌ Cancel" : "❌ لغو", "cancel")]];
-}
-function DONE_KB(lang) {
-  return [[makeButton(lang === "en" ? "🔄 Another file" : "🔄 فایل دیگه", "another")]];
-}
-function BACK_KB(lang) {
-  return [[makeButton(lang === "en" ? "🔙 Back" : "🔙 بازگشت", "back_start")]];
-}
-function CONFIRM_KB(token, lang) {
-  return [[
-    makeButton(lang === "en" ? "✅ Confirm" : "✅ تایید", "confirm_" + token),
-    makeButton(lang === "en" ? "✏️ Edit" : "✏️ ویرایش", "edit"),
-    makeButton(lang === "en" ? "❌ Cancel" : "❌ لغو", "cancel"),
-  ]];
-}
-function CANCEL_PROCESS_KB(lang) {
-  return [[makeButton(lang === "en" ? "⛔ Cancel process" : "⛔ لغو پردازش", "cancel_process")]];
-}
-
-async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
-  const newFileName = item.newName;
-  const messageId = item.messageId;
-  const fileSize = item.fileSize;
-
-  const tmpPath = path.join(os.tmpdir(), "tg_dl_" + Date.now() + "_" + Math.random().toString(36).slice(2));
-  const renamedPath = path.join(os.tmpdir(), newFileName);
-
-  abortFlags.set(key, false);
-  processingFiles.set(key, {
-    statusMsgId: statusMsgId,
-    cancelled: false,
-    tmpPath: tmpPath,
-    renamedPath: renamedPath,
-  });
-
-  let lastProgressUpdate = 0;
-  let lastBytes = 0;
-  let lastTime = Date.now();
-
-  function isCancelled() {
-    return abortFlags.get(key) === true ||
-      (processingFiles.get(key) && processingFiles.get(key).cancelled);
-  }
-
-  try {
-    const messages = await client.getMessages(chatId, { ids: [messageId] });
-    const origMsg = messages[0];
-    if (!origMsg || !origMsg.media) throw new Error("Media not found");
-
-    await client.editMessage(chatId, {
-      message: statusMsgId,
-      text: buildDownloadMsg(newFileName, 0, fileSize, 0, "", lang),
-      parseMode: "html",
-      buttons: CANCEL_PROCESS_KB(lang),
-    }).catch(function () {});
-
-    await client.downloadMedia(origMsg.media, {
-      outputFile: tmpPath,
-      progressCallback: async function (downloaded, total) {
-        if (isCancelled()) throw new Error("Cancelled byخطا از اینه که موقع کپی، متن فارسیِ توضیح من داخل فایل JS رفته و سینتکس خراب شده.
-
-کل محتوای `index.js` رو پاک کن و **فقط** کد زیر رو بگذار (هیچ متن اضافه‌ای قبل یا بعدش نباشد):
-
-```js
-import { TelegramClient, Api } from "telegram";
-import { StringSession } from "telegram/sessions/index.js";
-import { NewMessage } from "telegram/events/index.js";
-import { CallbackQuery } from "telegram/events/CallbackQuery.js";
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
-import { logger } from "./lib/logger.js";
-
-const API_ID    = parseInt(process.env["TELEGRAM_API_ID"]  ?? "0", 10);
-const API_HASH  = process.env["TELEGRAM_API_HASH"]  ?? "";
-const BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
-const ADMIN_ID  = 155824019n;
-const SESSION_FILE = path.join(os.tmpdir(), "tg_gramjs_session.txt");
-const STATS_FILE = path.join(os.tmpdir(), "stats.json");
-const BANNED_FILE = path.join(os.tmpdir(), "banned.json");
-const CONFIG_FILE = path.join(os.tmpdir(), "bot_config.json");
-
-let botConfig = loadConfig();
-function loadConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-  } catch {
-    return { maxFileSize: 2 * 1024 * 1024 * 1024 };
-  }
-}
-function saveConfig() {
-  try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(botConfig, null, 2));
-  } catch {}
-}
-
-let stats = loadStats();
-let bannedUsers = loadBanned();
-const startTime = Date.now();
-
-function loadStats() {
-  try {
-    return JSON.parse(fs.readFileSync(STATS_FILE, "utf-8"));
-  } catch {
-    return { total: 0, totalBytes: 0, users: {}, today: 0, week: 0 };
-  }
-}
-function saveStats() {
-  try {
-    fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2));
-  } catch {}
-}
-function loadBanned() {
-  try {
-    return JSON.parse(fs.readFileSync(BANNED_FILE, "utf-8"));
-  } catch {
-    return [];
-  }
-}
-function saveBanned() {
-  try {
-    fs.writeFileSync(BANNED_FILE, JSON.stringify(bannedUsers, null, 2));
-  } catch {}
-}
-
-function updateUserStats(userId) {
-  const today = new Date().toDateString();
-  const now = Date.now();
-  if (!stats.users[userId]) {
-    stats.users[userId] = { lastSeen: today, count: 0, firstSeen: now };
-  }
-  if (stats.users[userId].lastSeen !== today) {
-    stats.users[userId].lastSeen = today;
-    stats.today = (stats.today || 0) + 1;
-  }
-  stats.users[userId].count++;
-  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-  stats.week = Object.values(stats.users).filter(function (u) {
-    return (u.firstSeen || now) > weekAgo || u.lastSeen === today;
-  }).length;
-  saveStats();
-}
-
-function getUptime() {
-  const diff = Date.now() - startTime;
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  return days + " روز " + hours + " ساعت";
-}
-
-const userLang = new Map();
-
-const T = {
-  fa: {
-    welcome: "🎬 <b>ربات تغییر نام فایل</b>\nفایل ویدیویی خود را ارسال کنید.\n📦 پشتیبانی تا <b>۲ گیگابایت</b> — بدون محدودیت!\n\n💡 چند فایل بفرستید و بعد لیست نام‌ها را خط‌به‌خط ارسال کنید.",
-    help: "📖 <b>راهنما</b>\n\n۱. یک یا چند فایل Document بفرستید\n۲. نام جدید را تایپ کنید (برای چند فایل: هر نام در یک خط)\n۳. تأیید کنید و فایل را دریافت کنید ✅\n\n💡 اگر پسوند ننویسید، پسوند اصلی حفظ می‌شود.\n🌐 زبان: /lang fa یا /lang en",
-    about: function () {
-      return "ℹ️ <b>درباره ربات</b>\n⚡ پروتکل: MTProto\n📦 حداکثر: " + fmtSize(botConfig.maxFileSize) + "\n🔒 فایل‌ها بعد از ارسال حذف می‌شوند\n🟢 آپتایم: " + getUptime();
-    },
-    sendFileFirst: "⚠️ ابتدا یک فایل ارسال کنید.",
-    banned: "🚫 شما توسط ادمین مسدود شده‌اید.",
-    cancelled: "❌ لغو شد. فایل جدیدی ارسال کنید:",
-    processCancelled: "⛔ پردازش لغو شد.",
-    processCancelledHint: "❌ پردازش لغو شد. فایل جدیدی ارسال کنید.",
-    enterName: "✏️ نام جدید را ارسال کنید:",
-    enterNamesBatch: "✏️ نام‌های جدید را خط‌به‌خط ارسال کنید (",
-    preview: "📝 <b>پیش‌نمایش نام جدید</b>\n\n",
-    previewBatch: "📝 <b>پیش‌نمایش نام‌های جدید</b>\n\n",
-    currentName: "نام فعلی:\n",
-    newName: "نام جدید:\n",
-    downloading: "⬇️ <b>در حال دانلود...</b>",
-    uploading: "⬆️ <b>در حال آپلود...</b>",
-    downloadDone: "✅ دانلود کامل شد",
-    done: "✅ <b>کامل شد!</b>",
-    errorProcess: "❌ خطا در پردازش فایل. دوباره امتحان کنید.",
-    langSet: "✅ زبان روی فارسی تنظیم شد.",
-    langSetEn: "✅ Language set to English.",
-    tooBig: "⚠️ حجم فایل بیشتر از حد مجاز است.",
-    online: "🟢 ربات آنلاین است.",
-  },
-  en: {
-    welcome: "🎬 <b>File Rename Bot</b>\nSend your video file.\n📦 Up to <b>2 GB</b> — no Bot API limit!\n\n💡 Send multiple files, then send new names (one per line).",
-    help: "📖 <b>Help</b>\n\n1. Send one or more Document files\n2. Type the new name (for multiple: one name per line)\n3. Confirm and receive the file ✅\n\n💡 Extension is kept if you omit it.\n🌐 Language: /lang fa or /lang en",
-    about: function () {
-      return "ℹ️ <b>About</b>\n⚡ Protocol: MTProto\n📦 Max size: " + fmtSize(botConfig.maxFileSize) + "\n🔒 Files are deleted after sending\n🟢 Uptime: " + getUptime();
-    },
-    sendFileFirst: "⚠️ Please send a file first.",
-    banned: "🚫 You have been banned by the admin.",
-    cancelled: "❌ Cancelled. Send a new file:",
-    processCancelled: "⛔ Process cancelled.",
-    processCancelledHint: "❌ Process cancelled. Send a new file.",
-    enterName: "✏️ Send the new name:",
-    enterNamesBatch: "✏️ Send new names, one per line (",
-    preview: "📝 <b>Name preview</b>\n\n",
-    previewBatch: "📝 <b>Names preview</b>\n\n",
-    currentName: "Current:\n",
-    newName: "New:\n",
-    downloading: "⬇️ <b>Downloading...</b>",
-    uploading: "⬆️ <b>Uploading...</b>",
-    downloadDone: "✅ Download complete",
-    done: "✅ <b>Done!</b>",
-    errorProcess: "❌ Error processing file. Try again.",
-    langSet: "✅ Language set to فارسی.",
-    langSetEn: "✅ Language set to English.",
-    tooBig: "⚠️ File is larger than the allowed limit.",
-    online: "🟢 Bot is online.",
-  },
-};
-
-function t(key, lang) {
-  const L = T[lang] || T.fa;
-  const v = L[key];
-  return typeof v === "function" ? v() : v;
-}
-
-function getLang(key) {
-  return userLang.get(key) || "fa";
-}
-
-function bar(pct) {
-  const filled = Math.min(10, Math.round(pct / 10));
-  return "█".repeat(filled) + "░".repeat(10 - filled);
-}
-function fmtSize(bytes) {
-  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + " GB";
-  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + " MB";
-  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + " KB";
-  return bytes + " B";
-}
-function fmtSpeed(bytesPerSec) {
-  if (bytesPerSec >= 1e9) return (bytesPerSec / 1e9).toFixed(1) + " GB/s";
-  if (bytesPerSec >= 1e6) return (bytesPerSec / 1e6).toFixed(1) + " MB/s";
-  if (bytesPerSec >= 1e3) return (bytesPerSec / 1e3).toFixed(1) + " KB/s";
-  return Math.round(bytesPerSec) + " B/s";
-}
-function getExtension(filename) {
-  const parts = filename.split(".");
-  return parts.length > 1 ? parts.pop() : "";
-}
-
-function buildDownloadMsg(fileName, pct, totalBytes, speed, eta, lang) {
-  const done = Math.floor((totalBytes * pct) / 100);
-  let msg = t("downloading", lang) + "\n\n";
-  msg += bar(pct) + "  <b>" + pct + "%</b>\n";
-  msg += "💾 " + fmtSize(done) + " / " + fmtSize(totalBytes) + "\n";
-  if (speed) msg += "⚡ " + fmtSpeed(speed) + "\n";
-  if (eta) msg += "⏱ " + eta + "\n";
-  msg += "📄 <code>" + fileName + "</code>";
-  return msg;
-}
-function buildUploadMsg(fileName, pct, totalBytes, speed, eta, lang) {
-  const done = Math.floor((totalBytes * pct) / 100);
-  let msg = t("downloadDone", lang) + "\n";
-  msg += t("uploading", lang) + "\n\n";
-  msg += bar(pct) + "  <b>" + pct + "%</b>\n";
-  msg += "💾 " + fmtSize(done) + " / " + fmtSize(totalBytes) + "\n";
-  if (speed) msg += "⚡ " + fmtSpeed(speed) + "\n";
-  if (eta) msg += "⏱ " + eta + "\n";
-  msg += "📄 <code>" + fileName + "</code>";
-  return msg;
-}
-
-async function del(client, chatId, ids, delay) {
-  if (!ids || !ids.length) return;
-  if (delay) {
-    setTimeout(function () {
-      client.deleteMessages(chatId, ids, { revoke: true }).catch(function () {});
-    }, delay);
-  } else {
-    await client.deleteMessages(chatId, ids, { revoke: true }).catch(function () {});
-  }
-}
-
-function autoDelete(client, chatId, msgId, ms) {
-  if (!msgId) return;
-  setTimeout(function () {
-    client.deleteMessages(chatId, [msgId], { revoke: true }).catch(function () {});
-  }, ms || 5 * 60 * 1000);
-}
-
-async function notifyAdminError(client, err, context) {
-  try {
-    const text =
-      "⚠️ <b>خطای ربات</b>\n" +
+      "⚠️ <b>Bot Error</b>\n" +
       "📍 " + (context || "-") + "\n" +
       "<code>" + String(err && err.message ? err.message : err).slice(0, 800) + "</code>";
     await client.sendMessage(ADMIN_ID, { message: text, parseMode: "html" });
@@ -834,7 +409,7 @@ async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
     if (chatId !== ADMIN_ID) {
       await client.sendMessage(ADMIN_ID, {
         message:
-          "🔔 <b>فایل پردازش شد</b>\n" +
+          "🔔 <b>File processed</b>\n" +
           "👤 <code>" + chatId + "</code>\n" +
           "📄 <code>" + newFileName + "</code>\n" +
           "💾 " + fmtSize(fileSize),
@@ -857,10 +432,10 @@ async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
 }
 
 export async function startBot() {
-  console.log("🔵 startBot() called");
+  console.log("startBot() called");
 
   if (!API_ID || !API_HASH || !BOT_TOKEN) {
-    console.error("❌ Missing credentials!");
+    console.error("Missing credentials!");
     logger.warn("Missing Telegram credentials");
     return;
   }
@@ -883,9 +458,9 @@ export async function startBot() {
     try {
       if (!client.connected) {
         reconnecting = true;
-        console.log("🔄 Reconnecting...");
+        console.log("Reconnecting...");
         await client.connect();
-        console.log("✅ Reconnected");
+        console.log("Reconnected");
       }
     } catch (e) {
       console.error("Reconnect failed:", e.message);
@@ -896,9 +471,9 @@ export async function startBot() {
   }
   setInterval(ensureConnected, 30000);
 
-  console.log("🔄 Connecting...");
+  console.log("Connecting...");
   await client.start({ botAuthToken: BOT_TOKEN });
-  console.log("✅ Bot started");
+  console.log("Bot started");
 
   try {
     fs.writeFileSync(SESSION_FILE, client.session.save(), "utf-8");
@@ -942,7 +517,7 @@ export async function startBot() {
         if (userId && !bannedUsers.includes(userId)) {
           bannedUsers.push(userId);
           saveBanned();
-          await client.sendMessage(chatId, { message: "✅ کاربر " + userId + " مسدود شد." });
+          await client.sendMessage(chatId, { message: "User " + userId + " banned." });
         }
         return;
       }
@@ -951,30 +526,30 @@ export async function startBot() {
         if (userId) {
           bannedUsers = bannedUsers.filter(function (id) { return id !== userId; });
           saveBanned();
-          await client.sendMessage(chatId, { message: "✅ کاربر " + userId + " آزاد شد." });
+          await client.sendMessage(chatId, { message: "User " + userId + " unbanned." });
         }
         return;
       }
       if (text === "/banlist") {
         const list = bannedUsers.length
           ? bannedUsers.map(function (id) { return "• <code>" + id + "</code>"; }).join("\n")
-          : "لیست خالی است.";
-        await client.sendMessage(chatId, { message: "🚫 <b>مسدودها</b>\n\n" + list, parseMode: "html" });
+          : "Empty.";
+        await client.sendMessage(chatId, { message: "<b>Banned</b>\n\n" + list, parseMode: "html" });
         return;
       }
       if (text === "/stats") {
         const totalUsers = Object.keys(stats.users).length;
         await client.sendMessage(chatId, {
           message:
-            "📊 <b>آمار</b>\n\n" +
-            "✅ فایل‌ها: <b>" + stats.total + "</b>\n" +
-            "💾 حجم: <b>" + fmtSize(stats.totalBytes) + "</b>\n" +
-            "👥 امروز: <b>" + (stats.today || 0) + "</b>\n" +
-            "👥 هفته: <b>" + (stats.week || 0) + "</b>\n" +
-            "👥 کل: <b>" + totalUsers + "</b>\n" +
-            "🟢 آپتایم: <b>" + getUptime() + "</b>\n" +
-            "🚫 بن: <b>" + bannedUsers.length + "</b>\n" +
-            "📦 سقف حجم: <b>" + fmtSize(botConfig.maxFileSize) + "</b>",
+            "<b>Stats</b>\n\n" +
+            "Files: <b>" + stats.total + "</b>\n" +
+            "Size: <b>" + fmtSize(stats.totalBytes) + "</b>\n" +
+            "Today: <b>" + (stats.today || 0) + "</b>\n" +
+            "Week: <b>" + (stats.week || 0) + "</b>\n" +
+            "Users: <b>" + totalUsers + "</b>\n" +
+            "Uptime: <b>" + getUptime() + "</b>\n" +
+            "Banned: <b>" + bannedUsers.length + "</b>\n" +
+            "Max size: <b>" + fmtSize(botConfig.maxFileSize) + "</b>",
           parseMode: "html",
         });
         return;
@@ -986,12 +561,12 @@ export async function startBot() {
       if (text.startsWith("/broadcast ")) {
         const body = text.slice("/broadcast ".length).trim();
         if (!body) {
-          await client.sendMessage(chatId, { message: "متن پیام را بعد از دستور بنویس." });
+          await client.sendMessage(chatId, { message: "Write message after command." });
           return;
         }
         const ids = Object.keys(stats.users);
         let ok = 0, fail = 0;
-        await client.sendMessage(chatId, { message: "📢 در حال ارسال به " + ids.length + " کاربر..." });
+        await client.sendMessage(chatId, { message: "Sending to " + ids.length + " users..." });
         for (let i = 0; i < ids.length; i++) {
           try {
             await client.sendMessage(ids[i], { message: body, parseMode: "html" });
@@ -1001,14 +576,14 @@ export async function startBot() {
           }
           await new Promise(function (r) { setTimeout(r, 50); });
         }
-        await client.sendMessage(chatId, { message: "✅ ارسال شد: " + ok + " | ❌ ناموفق: " + fail });
+        await client.sendMessage(chatId, { message: "OK: " + ok + " | Fail: " + fail });
         return;
       }
       if (text === "/users") {
         const entries = Object.entries(stats.users)
           .sort(function (a, b) { return (b[1].count || 0) - (a[1].count || 0); })
           .slice(0, 20);
-        let msg = "👥 <b>کاربران برتر</b>\n\n";
+        let msg = "<b>Top users</b>\n\n";
         entries.forEach(function (pair, idx) {
           msg += (idx + 1) + ". <code>" + pair[0] + "</code> — " + (pair[1].count || 0) + "\n";
         });
@@ -1018,12 +593,12 @@ export async function startBot() {
       if (text.startsWith("/setlimit ")) {
         const gb = parseFloat(text.split(" ")[1]);
         if (!gb || gb <= 0) {
-          await client.sendMessage(chatId, { message: "مثال: /setlimit 2" });
+          await client.sendMessage(chatId, { message: "Example: /setlimit 2" });
           return;
         }
         botConfig.maxFileSize = Math.floor(gb * 1024 * 1024 * 1024);
         saveConfig();
-        await client.sendMessage(chatId, { message: "✅ سقف حجم: " + fmtSize(botConfig.maxFileSize) });
+        await client.sendMessage(chatId, { message: "Max size: " + fmtSize(botConfig.maxFileSize) });
         return;
       }
       if (text === "/cleanup") {
@@ -1042,7 +617,7 @@ export async function startBot() {
             }
           });
         } catch {}
-        await client.sendMessage(chatId, { message: "🧹 پاکسازی انجام شد. آیتم‌ها: " + cleaned });
+        await client.sendMessage(chatId, { message: "Cleanup done. Items: " + cleaned });
         return;
       }
     }
@@ -1092,7 +667,7 @@ export async function startBot() {
         message:
           "📦 <b>" + originalName + "</b>\n" +
           "💾 " + fmtSize(fileSize) + "\n" +
-          (count > 1 ? ("📋 تعداد فایل‌ها: <b>" + count + "</b>\n") : "") +
+          (count > 1 ? ("📋 " + count + "\n") : "") +
           "\n" +
           (count > 1
             ? t("enterNamesBatch", lang) + count + "):\n<code>name1\nname2</code>"
@@ -1307,7 +882,7 @@ export async function startBot() {
             await client.editMessage(chatId, {
               message: statusMsg.id,
               text:
-                (lang === "en" ? "📦 File " : "📦 فایل ") +
+                (lang === "en" ? "📦 File " : "📦 ") +
                 (i + 1) + "/" + state.items.length + "\n" +
                 buildDownloadMsg(item.newName, 0, item.fileSize, 0, "", lang),
               parseMode: "html",
@@ -1342,28 +917,28 @@ export async function startBot() {
 
   await client.sendMessage(ADMIN_ID, {
     message:
-      "🟢 <b>ربات آنلاین شد.</b>\n\n" +
-      "دستورات ادمین:\n" +
+      "<b>Bot online.</b>\n\n" +
+      "Admin commands:\n" +
       "/stats\n/ping\n/ban [id]\n/unban [id]\n/banlist\n" +
-      "/broadcast [متن]\n/users\n/setlimit [GB]\n/cleanup",
+      "/broadcast [text]\n/users\n/setlimit [GB]\n/cleanup",
     parseMode: "html",
   }).catch(function (err) {
-    console.error("⚠️ Admin notify failed:", err.message);
+    console.error("Admin notify failed:", err.message);
   });
 
-  console.log("🎯 Bot is fully ready!");
+  console.log("Bot is fully ready!");
 }
 
-console.log("🚀 Starting bot...");
+console.log("Starting bot...");
 startBot()
   .then(function () {
-    console.log("✅ Bot running");
+    console.log("Bot running");
     setInterval(function () {}, 10000);
     process.stdin.resume();
     process.on("SIGINT", function () { saveStats(); process.exit(0); });
     process.on("SIGTERM", function () { saveStats(); process.exit(0); });
   })
   .catch(function (err) {
-    console.error("💥 Fatal:", err);
+    console.error("Fatal:", err);
     process.exit(1);
   });
