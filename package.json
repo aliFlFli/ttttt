@@ -2,7 +2,7 @@
   "name": "file-rename-bot",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "tsx index.ts"
   },
   "dependencies": {
     "telegram": "^2.0.0",
