@@ -22,19 +22,19 @@ const stats = { total: 0, totalBytes: 0 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function bar(pct: number): string {
+function bar(pct) {
   const filled = Math.min(10, Math.round(pct / 10));
   return "█".repeat(filled) + "░".repeat(10 - filled);
 }
 
-function fmtSize(bytes: number): string {
+function fmtSize(bytes) {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
   if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
   if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(1)} KB`;
   return `${bytes} B`;
 }
 
-function buildDownloadMsg(fileName: string, pct: number, totalBytes: number): string {
+function buildDownloadMsg(fileName, pct, totalBytes) {
   const done = Math.floor((totalBytes * pct) / 100);
   return (
     `⬇️ <b>در حال دانلود...</b>\n\n` +
@@ -44,7 +44,7 @@ function buildDownloadMsg(fileName: string, pct: number, totalBytes: number): st
   );
 }
 
-function buildUploadMsg(fileName: string, pct: number, totalBytes: number): string {
+function buildUploadMsg(fileName, pct, totalBytes) {
   const done = Math.floor((totalBytes * pct) / 100);
   return (
     `✅ دانلود کامل شد\n` +
@@ -55,19 +55,14 @@ function buildUploadMsg(fileName: string, pct: number, totalBytes: number): stri
   );
 }
 
-async function del(client: TelegramClient, chatId: any, ids: number[]) {
+async function del(client, chatId, ids) {
   await client.deleteMessages(chatId, ids, { revoke: true }).catch(() => {});
 }
 
 // ─── State machine ───────────────────────────────────────────────────────────
 
-type State =
-  | { stage: "idle" }
-  | { stage: "awaiting_name"; messageId: number; promptMsgId: number; fileName: string; fileSize: number }
-  | { stage: "processing" };
-
-const userState = new Map<string, State>();
-const k = (id: bigint | number) => String(id);
+const userState = new Map();
+const k = (id) => String(id);
 
 // ─── Keyboards ───────────────────────────────────────────────────────────────
 
@@ -100,7 +95,7 @@ const ABOUT = `ℹ️ <b>درباره ربات</b>
 
 // ─── Bot entry point ─────────────────────────────────────────────────────────
 
-export async function startBot(): Promise<void> {
+export async function startBot() {
   if (!API_ID || !API_HASH || !BOT_TOKEN) {
     logger.warn("Missing Telegram credentials — bot not started");
     return;
@@ -119,7 +114,7 @@ export async function startBot(): Promise<void> {
   await client.start({ botAuthToken: BOT_TOKEN });
 
   try {
-    const saved = client.session.save() as unknown as string;
+    const saved = client.session.save();
     fs.writeFileSync(SESSION_FILE, saved, "utf-8");
   } catch { /* non-fatal */ }
 
@@ -127,13 +122,13 @@ export async function startBot(): Promise<void> {
 
   // ── Message handler ───────────────────────────────────────────────────────
 
-  client.addEventHandler(async (event: any) => {
+  client.addEventHandler(async (event) => {
     const msg = event.message;
     if (!msg?.isPrivate) return;
 
-    const chatId = msg.chatId!;
+    const chatId = msg.chatId;
     const key = k(chatId);
-    const text: string = msg.message ?? "";
+    const text = msg.message ?? "";
     const isAdmin = chatId === ADMIN_ID;
 
     // /start
@@ -162,15 +157,15 @@ export async function startBot(): Promise<void> {
     }
 
     // ── Incoming document ────────────────────────────────────────────────────
-    const doc =
+    let doc =
       msg.document ??
       (msg.media instanceof Api.MessageMediaDocument
-        ? (msg.media.document as Api.Document | undefined)
+        ? msg.media.document
         : undefined);
 
     if (doc) {
       const fnAttr = doc.attributes?.find(
-        (a: any): a is Api.DocumentAttributeFilename =>
+        (a) =>
           a instanceof Api.DocumentAttributeFilename,
       );
       const originalName = fnAttr?.fileName ?? `file_${msg.id}`;
@@ -230,9 +225,9 @@ export async function startBot(): Promise<void> {
 
         // ── Download ─────────────────────────────────────────────────────
         let lastDl = 0;
-        await (client.downloadMedia as any)(origMsg.media, {
+        await client.downloadMedia(origMsg.media, {
           outputFile: tmpPath,
-          progressCallback: async (downloaded: bigint, total: bigint) => {
+          progressCallback: async (downloaded, total) => {
             const now = Date.now();
             if (now - lastDl < 2500) return;
             lastDl = now;
@@ -258,7 +253,7 @@ export async function startBot(): Promise<void> {
 
         // ── Upload ───────────────────────────────────────────────────────
         let lastUp = 0;
-        await (client.sendFile as any)(chatId, {
+        await client.sendFile(chatId, {
           file: renamedPath,
           caption:
             `✅ <b>تغییر نام انجام شد!</b>\n` +
@@ -267,7 +262,7 @@ export async function startBot(): Promise<void> {
           parseMode: "html",
           forceDocument: true,
           attributes: [new Api.DocumentAttributeFilename({ fileName: newFileName })],
-          progressCallback: async (progress: number) => {
+          progressCallback: async (progress) => {
             const now = Date.now();
             if (now - lastUp < 2500) return;
             lastUp = now;
@@ -329,8 +324,8 @@ export async function startBot(): Promise<void> {
 
   // ── Callback query handler ────────────────────────────────────────────────
 
-  client.addEventHandler(async (event: any) => {
-    const data: string = event.data?.toString() ?? "";
+  client.addEventHandler(async (event) => {
+    const data = event.data?.toString() ?? "";
     const chatId = event.query.userId;
     const key = k(chatId);
 
