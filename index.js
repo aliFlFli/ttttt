@@ -109,33 +109,37 @@ function getExtension(filename) {
   return ext === filename ? "" : ext;
 }
 
-function buildDownloadMsg(fileName, pct, totalBytes, speed, eta) {
+function buildDownloadMsg(fileName, pct, totalBytes, speed = 0, eta = "") {
   const done = Math.floor((totalBytes * pct) / 100);
-  const speedText = speed ? `⚡ ${fmtSpeed(speed)}\n` : "";
-  const etaText = eta ? `⏱ باقی مانده: ${eta}\n` : "";
-  return (
-    `⬇️ <b>در حال دانلود...</b>\n\n` +
-    `\( {bar(pct)}  <b> \){pct}%</b>\n` +
-    `💾 ${fmtSize(done)} / ${fmtSize(totalBytes)}\n` +
-    speedText +
-    etaText +
-    `📄 <code>${fileName}</code>`
-  );
+  const lines = [
+    `⬇️ <b>در حال دانلود...</b>`,
+    ``,
+    `\( {bar(pct)}  <b> \){pct}%</b>`,
+    `💾 ${fmtSize(done)} / ${fmtSize(totalBytes)}`,
+  ];
+
+  if (speed > 0) lines.push(`⚡ ${fmtSpeed(speed)}`);
+  if (eta) lines.push(`⏱ باقی مانده: ${eta}`);
+  lines.push(`📄 <code>${fileName}</code>`);
+
+  return lines.join("\n");
 }
 
-function buildUploadMsg(fileName, pct, totalBytes, speed, eta) {
+function buildUploadMsg(fileName, pct, totalBytes, speed = 0, eta = "") {
   const done = Math.floor((totalBytes * pct) / 100);
-  const speedText = speed ? `⚡ ${fmtSpeed(speed)}\n` : "";
-  const etaText = eta ? `⏱ باقی مانده: ${eta}\n` : "";
-  return (
-    `✅ دانلود کامل شد\n` +
-    `⬆️ <b>در حال آپلود...</b>\n\n` +
-    `\( {bar(pct)}  <b> \){pct}%</b>\n` +
-    `💾 ${fmtSize(done)} / ${fmtSize(totalBytes)}\n` +
-    speedText +
-    etaText +
-    `📄 <code>${fileName}</code>`
-  );
+  const lines = [
+    `✅ دانلود کامل شد`,
+    `⬆️ <b>در حال آپلود...</b>`,
+    ``,
+    `\( {bar(pct)}  <b> \){pct}%</b>`,
+    `💾 ${fmtSize(done)} / ${fmtSize(totalBytes)}`,
+  ];
+
+  if (speed > 0) lines.push(`⚡ ${fmtSpeed(speed)}`);
+  if (eta) lines.push(`⏱ باقی مانده: ${eta}`);
+  lines.push(`📄 <code>${fileName}</code>`);
+
+  return lines.join("\n");
 }
 
 async function del(client, chatId, ids, delay = 0) {
@@ -146,12 +150,8 @@ async function del(client, chatId, ids, delay = 0) {
   }
 }
 
-// ─── Styled Button Helper (Bot API 9.4+) ─────────────────────────────────────
+// ─── Styled Button Helper ────────────────────────────────────────────────────
 
-/**
- * ساخت دکمه اینلاین با پشتیبانی از رنگ (primary / success / danger)
- * اگر نسخه GramJS از style پشتیبانی نکند، به صورت عادی کار می‌کند.
- */
 function styledButton(text, data, style = null) {
   const payload = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
 
@@ -160,16 +160,18 @@ function styledButton(text, data, style = null) {
     data: payload,
   });
 
-  if (style === "primary" || style === "success" || style === "danger") {
+  // فقط اگر نسخه GramJS از KeyboardButtonStyle پشتیبانی کند
+  if (style && (style === "primary" || style === "success" || style === "danger")) {
     try {
-      // پشتیبانی از لایه جدید TL
-      btn.style = new Api.KeyboardButtonStyle({
-        bgPrimary: style === "primary" || undefined,
-        bgSuccess: style === "success" || undefined,
-        bgDanger: style === "danger" || undefined,
-      });
+      if (Api.KeyboardButtonStyle) {
+        btn.style = new Api.KeyboardButtonStyle({
+          bgPrimary: style === "primary" || undefined,
+          bgSuccess: style === "success" || undefined,
+          bgDanger:  style === "danger"  || undefined,
+        });
+      }
     } catch {
-      // نسخه‌های قدیمی‌تر GramJS این constructor را ندارند → نادیده گرفته می‌شود
+      // نسخه‌های قدیمی‌تر → دکمه بدون رنگ
     }
   }
 
@@ -605,20 +607,20 @@ export async function startBot() {
               lastBytes = downloadedNum;
               lastTime = now;
 
-              const remaining = speed > 0 ? Math.ceil((totalNum - downloadedNum) / speed) : 0;
-              const eta =
-                remaining > 0
-                  ? `\( {Math.floor(remaining / 60)}: \){String(remaining % 60).padStart(2, "0")}`
-                  : "";
+              let eta = "";
+              if (speed > 0) {
+                const remainingSec = Math.ceil((totalNum - downloadedNum) / speed);
+                const min = Math.floor(remainingSec / 60);
+                const sec = remainingSec % 60;
+                eta = `\( {min}: \){String(sec).padStart(2, "0")}`;
+              }
 
-              await client
-                .editMessage(chatId, {
-                  message: statusMsg.id,
-                  text: buildDownloadMsg(newFileName, pct, totalNum, speed, eta),
-                  parseMode: "html",
-                  buttons: CANCEL_PROCESS_KB,
-                })
-                .catch(() => {});
+              await client.editMessage(chatId, {
+                message: statusMsg.id,
+                text: buildDownloadMsg(newFileName, pct, totalNum, speed, eta),
+                parseMode: "html",
+                buttons: CANCEL_PROCESS_KB,
+              }).catch(() => {});
             },
           });
 
@@ -633,14 +635,12 @@ export async function startBot() {
           lastBytes = 0;
           lastTime = Date.now();
 
-          await client
-            .editMessage(chatId, {
-              message: statusMsg.id,
-              text: buildUploadMsg(newFileName, 0, fileSize),
-              parseMode: "html",
-              buttons: CANCEL_PROCESS_KB,
-            })
-            .catch(() => {});
+          await client.editMessage(chatId, {
+            message: statusMsg.id,
+            text: buildUploadMsg(newFileName, 0, fileSize),
+            parseMode: "html",
+            buttons: CANCEL_PROCESS_KB,
+          }).catch(() => {});
 
           await client.sendFile(chatId, {
             file: renamedPath,
@@ -662,25 +662,26 @@ export async function startBot() {
 
               const pct = Math.min(99, Math.floor(progress * 100));
               const uploaded = progress * fileSize;
+
               const elapsed = (now - lastTime) / 1000;
               const speed = elapsed > 0 ? (uploaded - lastBytes) / elapsed : 0;
               lastBytes = uploaded;
               lastTime = now;
 
-              const remaining = speed > 0 ? Math.ceil((fileSize - uploaded) / speed) : 0;
-              const eta =
-                remaining > 0
-                  ? `\( {Math.floor(remaining / 60)}: \){String(remaining % 60).padStart(2, "0")}`
-                  : "";
+              let eta = "";
+              if (speed > 0) {
+                const remainingSec = Math.ceil((fileSize - uploaded) / speed);
+                const min = Math.floor(remainingSec / 60);
+                const sec = remainingSec % 60;
+                eta = `\( {min}: \){String(sec).padStart(2, "0")}`;
+              }
 
-              await client
-                .editMessage(chatId, {
-                  message: statusMsg.id,
-                  text: buildUploadMsg(newFileName, pct, fileSize, speed, eta),
-                  parseMode: "html",
-                  buttons: CANCEL_PROCESS_KB,
-                })
-                .catch(() => {});
+              await client.editMessage(chatId, {
+                message: statusMsg.id,
+                text: buildUploadMsg(newFileName, pct, fileSize, speed, eta),
+                parseMode: "html",
+                buttons: CANCEL_PROCESS_KB,
+              }).catch(() => {});
             },
           });
 
@@ -701,16 +702,14 @@ export async function startBot() {
           });
 
           if (chatId !== ADMIN_ID) {
-            await client
-              .sendMessage(ADMIN_ID, {
-                message:
-                  `🔔 <b>فایل جدید پردازش شد</b>\n` +
-                  `👤 کاربر: <code>${chatId}</code>\n` +
-                  `📄 <code>${newFileName}</code>\n` +
-                  `💾 ${fmtSize(fileSize)}`,
-                parseMode: "html",
-              })
-              .catch(() => {});
+            await client.sendMessage(ADMIN_ID, {
+              message:
+                `🔔 <b>فایل جدید پردازش شد</b>\n` +
+                `👤 کاربر: <code>${chatId}</code>\n` +
+                `📄 <code>${newFileName}</code>\n` +
+                `💾 ${fmtSize(fileSize)}`,
+              parseMode: "html",
+            }).catch(() => {});
           }
 
           clearUserState(key);
@@ -721,12 +720,10 @@ export async function startBot() {
           } else {
             console.error("❌ Error processing file:", err);
             logger.error({ err }, "Error renaming file");
-            await client
-              .editMessage(chatId, {
-                message: statusMsg.id,
-                text: "❌ خطا در پردازش فایل. دوباره امتحان کنید.",
-              })
-              .catch(() => {});
+            await client.editMessage(chatId, {
+              message: statusMsg.id,
+              text: "❌ خطا در پردازش فایل. دوباره امتحان کنید.",
+            }).catch(() => {});
           }
           clearUserState(key);
           processingFiles.delete(key);
@@ -747,20 +744,18 @@ export async function startBot() {
 
   // Notify admin that bot is online
   console.log("📢 Sending online notification to admin...");
-  await client
-    .sendMessage(ADMIN_ID, {
-      message:
-        `🟢 <b>ربات آنلاین شد.</b>\n\n` +
-        `دستورات ادمین:\n` +
-        `/stats — آمار کامل\n` +
-        `/ping — وضعیت\n` +
-        `/ban [userId] — مسدود کردن کاربر\n` +
-        `/unban [userId] — آزاد کردن کاربر`,
-      parseMode: "html",
-    })
-    .catch((err) => {
-      console.error("⚠️ Could not notify admin:", err.message);
-    });
+  await client.sendMessage(ADMIN_ID, {
+    message:
+      `🟢 <b>ربات آنلاین شد.</b>\n\n` +
+      `دستورات ادمین:\n` +
+      `/stats — آمار کامل\n` +
+      `/ping — وضعیت\n` +
+      `/ban [userId] — مسدود کردن کاربر\n` +
+      `/unban [userId] — آزاد کردن کاربر`,
+    parseMode: "html",
+  }).catch((err) => {
+    console.error("⚠️ Could not notify admin:", err.message);
+  });
 
   console.log("🎯 Bot is fully ready and listening!");
 }
