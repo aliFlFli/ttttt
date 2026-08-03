@@ -12,11 +12,16 @@ const API_HASH  = process.env["TELEGRAM_API_HASH"]  ?? "";
 const BOT_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
 const ADMIN_ID  = "155824019";
 
-const SESSION_FILE = path.join(os.tmpdir(), "tg_gramjs_session.txt");
-const STATS_FILE   = path.join(os.tmpdir(), "stats.json");
-const BANNED_FILE  = path.join(os.tmpdir(), "banned.json");
-const CONFIG_FILE  = path.join(os.tmpdir(), "bot_config.json");
-const USERS_FILE   = path.join(os.tmpdir(), "users.json");
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
+try {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+} catch {}
+
+const SESSION_FILE = path.join(DATA_DIR, "tg_gramjs_session.txt");
+const STATS_FILE   = path.join(DATA_DIR, "stats.json");
+const BANNED_FILE  = path.join(DATA_DIR, "banned.json");
+const CONFIG_FILE  = path.join(DATA_DIR, "bot_config.json");
+const USERS_FILE   = path.join(DATA_DIR, "users.json");
 
 let BOT_USERNAME = "Bot";
 
@@ -406,6 +411,20 @@ async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
     const origMsg = messages[0];
     if (!origMsg || !origMsg.media) throw new Error("Media not found");
 
+    const origDoc = origMsg.media.document;
+    const originalAttrs = (origDoc && origDoc.attributes) ? origDoc.attributes : [];
+
+    const newAttributes = originalAttrs.map((attr) => {
+      if (attr instanceof Api.DocumentAttributeFilename) {
+        return new Api.DocumentAttributeFilename({ fileName: newFileName });
+      }
+      return attr;
+    });
+    const hasFilename = newAttributes.some((a) => a instanceof Api.DocumentAttributeFilename);
+    if (!hasFilename) {
+      newAttributes.push(new Api.DocumentAttributeFilename({ fileName: newFileName }));
+    }
+
     await client.editMessage(chatId, {
       message: statusMsgId,
       text: buildDownloadMsg(newFileName, 0, fileSize, 0, "", lang),
@@ -466,7 +485,7 @@ async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
         "💾 " + fmtSize(fileSize),
       parseMode: "html",
       forceDocument: true,
-      attributes: [new Api.DocumentAttributeFilename({ fileName: newFileName })],
+      attributes: newAttributes,
       progressCallback: async (progress) => {
         if (isCancelled()) throw new Error("Cancelled by user");
         const now = Date.now();
@@ -1002,7 +1021,7 @@ export async function startBot() {
       await client.sendMessage(chatId, { message: t("langSet", newLang) });
 
       if (isAdmin) {
-        u.status = "approved";
+        if (u.status !== "premium") u.status = "approved";
         saveUsers();
         await client.sendMessage(chatId, {
           message: t("welcome", newLang),
@@ -1262,7 +1281,8 @@ export async function startBot() {
   await client.sendMessage(ADMIN_ID, {
     message:
       "<b>Bot online.</b>\n" +
-      "Username: @" + BOT_USERNAME + "\n\n" +
+      "Username: @" + BOT_USERNAME + "\n" +
+      "Data dir: " + DATA_DIR + "\n\n" +
       "Admin commands:\n" +
       "/stats\n/ping\n/pending\n" +
       "/approve [id]\n/reject [id]\n" +
