@@ -885,9 +885,10 @@ export async function startBot() {
         }
       }
 
+      // Admin: never wipe premium on /start
       if (isAdmin) {
         if (!u.lang) u.lang = "fa";
-        u.status = "approved";
+        if (u.status !== "premium") u.status = "approved";
         saveUsers();
         setUserState(key, { stage: "idle", pendingFiles: [] });
         await client.sendMessage(chatId, {
@@ -919,6 +920,7 @@ export async function startBot() {
         return;
       }
 
+      // Normal / premium users: welcome only — do NOT touch status or premium fields
       setUserState(key, { stage: "idle", pendingFiles: [] });
       await client.sendMessage(chatId, {
         message: t("welcome", lang),
@@ -1139,6 +1141,7 @@ export async function startBot() {
           buttons: APPROVE_KB(chatId),
         }).catch(() => {});
       } else {
+        // approved or premium — only change lang, keep status
         await client.sendMessage(chatId, {
           message: t("welcome", newLang),
           parseMode: "html",
