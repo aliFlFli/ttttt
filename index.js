@@ -152,6 +152,66 @@ function checkAndApplyReferralReward(referrerId) {
   return null;
 }
 
+function cloneAttributes(originalAttrs, newFileName) {
+  const result = [];
+  let hasFilename = false;
+
+  for (const attr of originalAttrs || []) {
+    const cn = (attr.className || (attr.constructor && attr.constructor.name) || "").toString();
+
+    if (cn.includes("DocumentAttributeFilename") || attr instanceof Api.DocumentAttributeFilename) {
+      result.push(new Api.DocumentAttributeFilename({ fileName: newFileName }));
+      hasFilename = true;
+      continue;
+    }
+
+    if (cn.includes("DocumentAttributeVideo") || attr instanceof Api.DocumentAttributeVideo) {
+      result.push(new Api.DocumentAttributeVideo({
+        roundMessage: !!attr.roundMessage,
+        supportsStreaming: attr.supportsStreaming !== false,
+        nosound: !!attr.nosound,
+        duration: attr.duration || 0,
+        w: attr.w || 0,
+        h: attr.h || 0,
+        preloadPrefixSize: attr.preloadPrefixSize,
+        videoStartTs: attr.videoStartTs,
+        videoCodec: attr.videoCodec,
+      }));
+      continue;
+    }
+
+    if (cn.includes("DocumentAttributeAudio") || attr instanceof Api.DocumentAttributeAudio) {
+      result.push(new Api.DocumentAttributeAudio({
+        voice: !!attr.voice,
+        duration: attr.duration || 0,
+        title: attr.title,
+        performer: attr.performer,
+        waveform: attr.waveform,
+      }));
+      continue;
+    }
+
+    if (cn.includes("DocumentAttributeAnimated") || attr instanceof Api.DocumentAttributeAnimated) {
+      result.push(new Api.DocumentAttributeAnimated());
+      continue;
+    }
+
+    if (cn.includes("DocumentAttributeHasStickers") || attr instanceof Api.DocumentAttributeHasStickers) {
+      result.push(new Api.DocumentAttributeHasStickers());
+      continue;
+    }
+
+    try {
+      result.push(attr);
+    } catch {}
+  }
+
+  if (!hasFilename) {
+    result.push(new Api.DocumentAttributeFilename({ fileName: newFileName }));
+  }
+  return result;
+}
+
 const startTime = Date.now();
 const userState = new Map();
 const processingFiles = new Map();
@@ -214,6 +274,16 @@ const T = {
     statusBanned: "🚫 مسدود",
     referralInfo: "🔗 لینک دعوت شما:\n",
     needApproval: "⏳ حساب شما هنوز تایید نشده است.",
+    premiumTitle: "⭐ <b>پریمیوم</b>\n\n",
+    premiumInfo:
+      "با دعوت دوستان می‌توانید پریمیوم فعال کنید:\n\n" +
+      "🥈 <b>نقره‌ای</b>\n• ۳ زیرمجموعه تایید‌شده\n• ۱۰ گیگابایت روزانه\n• ۱۵ روز\n\n" +
+      "🥇 <b>طلایی</b>\n• ۵ زیرمجموعه تایید‌شده\n• ۱۵ گیگابایت روزانه\n• ۳۰ روز\n\n" +
+      "لینک دعوت را از پروفایل کپی کنید.",
+    premiumActive: "✅ پریمیوم شما فعال است.",
+    premiumNeedMore: "⚠️ هنوز زیرمجموعه کافی ندارید.",
+    premiumActivated: "🎉 پریمیوم با موفقیت فعال شد!",
+    newReferral: "👥 یک نفر با لینک شما عضو شد و تایید شد:\n",
   },
   en: {
     chooseLang: "🌐 Please choose your language:",
@@ -250,6 +320,16 @@ const T = {
     statusBanned: "🚫 Banned",
     referralInfo: "🔗 Your referral link:\n",
     needApproval: "⏳ Your account is not approved yet.",
+    premiumTitle: "⭐ <b>Premium</b>\n\n",
+    premiumInfo:
+      "Invite friends to unlock Premium:\n\n" +
+      "🥈 <b>Silver</b>\n• 3 approved referrals\n• 10 GB daily\n• 15 days\n\n" +
+      "🥇 <b>Gold</b>\n• 5 approved referrals\n• 15 GB daily\n• 30 days\n\n" +
+      "Copy your invite link from Profile.",
+    premiumActive: "✅ Your Premium is active.",
+    premiumNeedMore: "⚠️ Not enough referrals yet.",
+    premiumActivated: "🎉 Premium activated successfully!",
+    newReferral: "👥 Someone joined with your link and was approved:\n",
   },
 };
 
@@ -356,9 +436,23 @@ function MAIN_KB(lang) {
     ],
     [
       makeButton(lang === "en" ? "👤 Profile" : "👤 پروفایل", "profile"),
+      makeButton(lang === "en" ? "⭐ Premium" : "⭐ پریمیوم", "premium"),
+    ],
+    [
       makeButton(lang === "en" ? "🌐 Language" : "🌐 زبان", "change_lang"),
     ],
   ];
+}
+function PREMIUM_KB(lang, refCount) {
+  const rows = [];
+  if (refCount >= 3) {
+    rows.push([makeButton(lang === "en" ? "🥈 Activate Silver" : "🥈 فعال‌سازی نقره‌ای", "activate_silver")]);
+  }
+  if (refCount >= 5) {
+    rows.push([makeButton(lang === "en" ? "🥇 Activate Gold" : "🥇 فعال‌سازی طلایی", "activate_gold")]);
+  }
+  rows.push([makeButton(lang === "en" ? "🔙 Back" : "🔙 بازگشت", "back_start")]);
+  return rows;
 }
 function CANCEL_KB(lang) {
   return [[makeButton(lang === "en" ? "❌ Cancel" : "❌ لغو", "cancel")]];
@@ -413,17 +507,7 @@ async function processOneFile(client, chatId, key, lang, item, statusMsgId) {
 
     const origDoc = origMsg.media.document;
     const originalAttrs = (origDoc && origDoc.attributes) ? origDoc.attributes : [];
-
-    const newAttributes = originalAttrs.map((attr) => {
-      if (attr instanceof Api.DocumentAttributeFilename) {
-        return new Api.DocumentAttributeFilename({ fileName: newFileName });
-      }
-      return attr;
-    });
-    const hasFilename = newAttributes.some((a) => a instanceof Api.DocumentAttributeFilename);
-    if (!hasFilename) {
-      newAttributes.push(new Api.DocumentAttributeFilename({ fileName: newFileName }));
-    }
+    const newAttributes = cloneAttributes(originalAttrs, newFileName);
 
     await client.editMessage(chatId, {
       message: statusMsgId,
@@ -603,7 +687,6 @@ export async function startBot() {
   } catch {}
 
   getUser(ADMIN_ID);
-
   logger.info("Telegram bot started");
 
   client.addEventHandler(async (event) => {
@@ -981,14 +1064,25 @@ export async function startBot() {
     saveUsers();
 
     if (target.referredBy) {
-      const ref = getUser(target.referredBy);
+      const refId = target.referredBy;
+      const ref = getUser(refId);
       if (!ref.referrals.includes(String(targetId))) {
         ref.referrals.push(String(targetId));
         saveUsers();
-        const reward = checkAndApplyReferralReward(target.referredBy);
+
+        const refLang = ref.lang || "fa";
+        await client.sendMessage(refId, {
+          message:
+            t("newReferral", refLang) +
+            "👤 <code>" + targetId + "</code>\n" +
+            "👥 " + (refLang === "en" ? "Total: " : "مجموع: ") + ref.referrals.length,
+          parseMode: "html",
+        }).catch(() => {});
+
+        const reward = checkAndApplyReferralReward(refId);
         if (reward) {
           const tierName = reward.tier === "gold" ? "طلایی (Gold)" : "نقره‌ای (Silver)";
-          await client.sendMessage(target.referredBy, {
+          await client.sendMessage(refId, {
             message: "🎉 پریمیوم " + tierName + " فعال شد!\n" +
               reward.limitGB + " گیگابایت روزانه / " + reward.days + " روز",
           }).catch(() => {});
@@ -1079,6 +1173,62 @@ export async function startBot() {
         buttons: BACK_KB(lang),
       });
       autoDelete(client, chatId, m.id, 10 * 60 * 1000);
+      return;
+    }
+
+    if (data === "premium") {
+      const refCount = u.referrals.length;
+      let body = t("premiumTitle", lang) + t("premiumInfo", lang);
+      body += "\n\n👥 " + (lang === "en" ? "Your referrals: " : "زیرمجموعه‌های شما: ") + "<b>" + refCount + "</b>";
+
+      if (isPremium(u)) {
+        const leftDays = Math.ceil((u.premiumUntil - Date.now()) / (24 * 60 * 60 * 1000));
+        const tierName = u.premiumTier === "gold"
+          ? (lang === "en" ? "Gold" : "طلایی")
+          : (lang === "en" ? "Silver" : "نقره‌ای");
+        body += "\n\n" + t("premiumActive", lang);
+        body += "\n⭐ " + tierName + " — " + leftDays + (lang === "en" ? " days left" : " روز باقی‌مانده");
+      }
+
+      await client.sendMessage(chatId, {
+        message: body,
+        parseMode: "html",
+        buttons: PREMIUM_KB(lang, refCount),
+      });
+      return;
+    }
+
+    if (data === "activate_silver") {
+      if (u.referrals.length < 3) {
+        await client.sendMessage(chatId, { message: t("premiumNeedMore", lang) });
+        return;
+      }
+      u.status = "premium";
+      u.premiumTier = "silver";
+      u.premiumUntil = Date.now() + 15 * 24 * 60 * 60 * 1000;
+      u.premiumLimit = 10 * 1024 * 1024 * 1024;
+      saveUsers();
+      await client.sendMessage(chatId, {
+        message: t("premiumActivated", lang) + "\n🥈 " + (lang === "en" ? "Silver — 10 GB / 15 days" : "نقره‌ای — ۱۰ گیگ / ۱۵ روز"),
+        buttons: MAIN_KB(lang),
+      });
+      return;
+    }
+
+    if (data === "activate_gold") {
+      if (u.referrals.length < 5) {
+        await client.sendMessage(chatId, { message: t("premiumNeedMore", lang) });
+        return;
+      }
+      u.status = "premium";
+      u.premiumTier = "gold";
+      u.premiumUntil = Date.now() + 30 * 24 * 60 * 60 * 1000;
+      u.premiumLimit = 15 * 1024 * 1024 * 1024;
+      saveUsers();
+      await client.sendMessage(chatId, {
+        message: t("premiumActivated", lang) + "\n🥇 " + (lang === "en" ? "Gold — 15 GB / 30 days" : "طلایی — ۱۵ گیگ / ۳۰ روز"),
+        buttons: MAIN_KB(lang),
+      });
       return;
     }
 
