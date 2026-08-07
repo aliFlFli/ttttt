@@ -1,12 +1,14 @@
 {
-  "name": "file-rename-bot",
+  "name": "telegram-rename-bot",
+  "version": "2.0.0",
   "type": "module",
+  "description": "Telegram file-rename bot with SQLite storage, a processing queue, categories/folders, rate limiting, and admin tools.",
+  "main": "bot.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node bot.js"
   },
   "dependencies": {
-    "telegram": "^2.0.0",
-    "pino": "^8.0.0",
-    "pino-pretty": "^10.0.0"
+    "telegram": "^2.22.2",
+    "better-sqlite3": "^11.3.0"
   }
 }
